@@ -1,9 +1,27 @@
 package pt.uab.pri;
 
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import java.io.BufferedReader;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Date;
 
@@ -12,12 +30,12 @@ import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TopDocs;
-import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.store.FSDirectory;
 
 /** Simple command-line based search demo. */
@@ -28,7 +46,7 @@ public class SearchFiles {
 
 	/** Simple command-line based search demo. */
 	public static void main(String[] args) throws Exception {
-		String usage = "Usage:\tjava SearchFiles [-index dir] [-field f] [-repeat n] [-queries file] [-query string] [-raw] [-paging hitsPerPage]\n\nSee http://lucene.apache.org/core/4_1_0/demo/ for details.";
+		String usage = "Usage:\tjava org.apache.lucene.demo.SearchFiles [-index dir] [-field f] [-repeat n] [-queries file] [-query string] [-raw] [-paging hitsPerPage]\n\nSee http://lucene.apache.org/core/4_1_0/demo/ for details.";
 		if (args.length > 0 && ("-h".equals(args[0]) || "-help".equals(args[0]))) {
 			System.out.println(usage);
 			System.exit(0);
@@ -76,12 +94,14 @@ public class SearchFiles {
 
 		BufferedReader in = null;
 		if (queries != null) {
-			in = new BufferedReader(new InputStreamReader(new FileInputStream(queries), "UTF-8"));
+			in = Files.newBufferedReader(Paths.get(queries), StandardCharsets.UTF_8);
 		} else {
-			in = new BufferedReader(new InputStreamReader(System.in, "UTF-8"));
+			in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
 		}
 
 		QueryParser parser = new QueryParser(field, analyzer);
+		parser.setAllowLeadingWildcard(true);
+
 		while (true) {
 			if (queries == null && queryString == null) { // prompt the user
 				System.out.println("Enter query: ");
@@ -98,22 +118,30 @@ public class SearchFiles {
 				break;
 			}
 
-			Query query = parser.parse(line);
-			System.out.println("Searching for: " + query.toString(field));
+			// Remove question mark
+			line = line.replaceAll("\\?", "");
+			
+			try {
+				Query query = parser.parse(line);
+				System.out.println("Searching for: " + query.toString(field));
 
-			if (repeat > 0) { // repeat & time as benchmark
-				Date start = new Date();
-				for (int i = 0; i < repeat; i++) {
-					searcher.search(query, TopScoreDocCollector.create(100));
+				if (repeat > 0) { // repeat & time as benchmark
+					Date start = new Date();
+					for (int i = 0; i < repeat; i++) {
+						searcher.search(query, 100);
+					}
+					Date end = new Date();
+					System.out.println("Time: " + (end.getTime() - start.getTime()) + "ms");
 				}
-				Date end = new Date();
-				System.out.println("Time: " + (end.getTime() - start.getTime()) + "ms");
-			}
 
-			doPagingSearch(in, searcher, query, hitsPerPage, raw, queries == null && queryString == null);
+				doPagingSearch(in, searcher, query, hitsPerPage, raw, queries == null && queryString == null);
 
-			if (queryString != null) {
-				break;
+				if (queryString != null) {
+					break;
+				}
+			} catch (ParseException e) {
+				System.err.println("Error while parsing query. Skipping query...");
+				e.printStackTrace();
 			}
 		}
 		reader.close();
@@ -165,7 +193,7 @@ public class SearchFiles {
 				}
 
 				Document doc = searcher.doc(hits[i].doc);
-				String path = doc.get("docno");
+				String path = doc.get("path");
 				if (path != null) {
 					System.out.println((i + 1) + ". " + path);
 					String title = doc.get("title");
@@ -208,16 +236,12 @@ public class SearchFiles {
 						}
 						break;
 					} else {
-						try {
-							int page = Integer.parseInt(line);
-							if ((page - 1) * hitsPerPage < numTotalHits) {
-								start = (page - 1) * hitsPerPage;
-								break;
-							} else {
-								System.out.println("No such page");
-							}
-						} catch (NumberFormatException e) {
-							System.err.println("Invalid input");
+						int page = Integer.parseInt(line);
+						if ((page - 1) * hitsPerPage < numTotalHits) {
+							start = (page - 1) * hitsPerPage;
+							break;
+						} else {
+							System.out.println("No such page");
 						}
 					}
 				}
