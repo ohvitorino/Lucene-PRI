@@ -105,7 +105,7 @@ public class IndexFiles {
 			// buffer. But if you do this, increase the max heap
 			// size to the JVM (eg add -Xmx512m or -Xmx1g):
 			//
-			// iwc.setRAMBufferSizeMB(256.0);
+			iwc.setRAMBufferSizeMB(512.0);
 
 			IndexWriter writer = new IndexWriter(dir, iwc);
 			indexDocs(writer, docDir);
@@ -158,6 +158,7 @@ public class IndexFiles {
 						indexDoc(writer, file, attrs.lastModifiedTime().toMillis());
 					} catch (IOException ignore) {
 						// don't index files that can't be read.
+						System.err.println("Could not read file: " + file.getFileName());
 					}
 					return FileVisitResult.CONTINUE;
 				}
@@ -170,14 +171,13 @@ public class IndexFiles {
 	/** Indexes a single document */
 	static void indexDoc(IndexWriter writer, Path file, long lastModified) throws IOException {
 
+		System.out.println("Indexing " + file.getFileName());
+		
 		try (FileInputStream stream = new FileInputStream(file.toFile())) {
 			List<InputStream> streams = Arrays.asList(new ByteArrayInputStream("<root>".getBytes()), stream,
 					new ByteArrayInputStream("</root>".getBytes()));
 
 			InputStream cntr = new SequenceInputStream(Collections.enumeration(streams));
-
-			// make a new, empty document
-			Document doc = new Document();
 
 			DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
 			DocumentBuilder dBuilder;
@@ -194,6 +194,9 @@ public class IndexFiles {
 					Node nNode = docsList.item(i);
 
 					if (nNode.getNodeType() == Node.ELEMENT_NODE) {
+
+						// make a new, empty document
+						Document doc = new Document();
 
 						Element eElement = (Element) nNode;
 
@@ -241,7 +244,7 @@ public class IndexFiles {
 							// New index, so we just add the document (no old
 							// document can
 							// be there):
-							System.out.println("adding " + eElement.getElementsByTagName("DOCNO").item(0).getTextContent());
+//							System.out.println("adding " + eElement.getElementsByTagName("DOCNO").item(0).getTextContent());
 							writer.addDocument(doc);
 						} else {
 							// Existing index (an old copy of this document may
@@ -251,7 +254,7 @@ public class IndexFiles {
 							// one matching
 							// the exact
 							// path, if present:
-							System.out.println("updating " + eElement.getElementsByTagName("DOCNO").item(0).getTextContent());
+//							System.out.println("updating " + eElement.getElementsByTagName("DOCNO").item(0).getTextContent());
 							writer.updateDocument(new Term("path", file.toString()), doc);
 						}
 					}
